@@ -7,4 +7,5 @@
  * to-do list
  * gamma
  * anti-aliasing
+ * tri class
  */

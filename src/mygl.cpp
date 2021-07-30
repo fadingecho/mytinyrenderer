@@ -53,6 +53,22 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color){
     }
 }
 
+double interpolation(vec3 bcoords, double v1, double v2, double v3){
+    // std::cout << bcoords[0]+bcoords[1]+bcoords[2] << std::endl;
+    double ret = bcoords[0]*v1;
+    ret += bcoords[1]*v2;
+    ret += bcoords[2]*v3;
+    return ret;
+}
+
+template<int n> vec<n> interpolation(vec3 bcoords, vec<n> v1, vec<n> v2, vec<n> v3){
+    assert(n > 0);
+    vec<n> ret = bcoords[0]*v1;
+    ret = ret + bcoords[1]*v2;
+    ret = ret + bcoords[2]*v3;
+    return ret;
+}
+
 vec3 barycentric(const vec2 pts[3], const vec2 P){
     // vec2 v0 = pts[1] - pts[0], v1 = pts[2] - pts[0], v2 = P - pts[0];
     // double d00 = v0*v0;
@@ -82,7 +98,7 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
     return vec3(-1, 1, 1);
 }
 
-void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &image, TGAImage &texture, double ill_indensity){
+void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &image, TGAImage &texture, vec3 ill_indensities){
     vec2 pts2[3] = {vec2(pts[0].x, pts[0].y),vec2(pts[1].x, pts[1].y),vec2(pts[2].x, pts[2].y)};
 
     vec2 bboxmin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
@@ -99,7 +115,6 @@ void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &ima
         bboxmax[i] = std::min(clamp[i], bboxmax[i]);
     }
     
-    vec3 P;
     vec2 uv;
     int tw = texture.get_width(), th = texture.get_height();
     for(P.x = bboxmin.x;P.x < bboxmax.x;P.x ++ )
@@ -107,20 +122,22 @@ void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &ima
         {
             vec3 bc_screen= barycentric(pts2, vec2(P.x, P.y));
             if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
-            P.z = 0, uv.x = 0, uv.y = 0;
-            for(int i = 0;i < 3;i ++ ){
-                double bc_i = bc_screen[i];
-                P.z += bc_i*pts[i].z;
-                uv.x += bc_i*uvs[i].x;
-                uv.y += bc_i*uvs[i].y;
-            }
-            uv.x *= th;
-            uv.y *= tw;
+            P.z = interpolation(bc_screen, pts[0].z, pts[1].z, pts[2].z);
 
             if(P.z > zbuff[(int)(P.x + P.y*image.get_width())]){
                 // image.set(P.x, P.y, white);
                 // image.set(P.x, P.y, TGAColor(255*ill_indensity, 255*ill_indensity, 255*ill_indensity, 255));
-                image.set(P.x, P.y, texture.get(uv.x, uv.y) * ill_indensity);
+                double ill_indensity = interpolation(bc_screen, ill_indensities[0], ill_indensities[1], ill_indensities[2]);
+                TGAColor color = black;
+                vec3 color_v = vec3(0, 0, 0);
+                if(ill_indensity > 0){
+                    uv = interpolation(bc_screen, uvs[0], uvs[1], uvs[2]);
+                    uv.x *= th;
+                    uv.y *= tw;
+                    color = texture.get(uv.x, uv.y)*ill_indensity;
+                }
+              
+                image.set(P.x, P.y, color);
                 zbuff[(int)(P.x + P.y*image.get_width())] = P.z;
             } 
         }

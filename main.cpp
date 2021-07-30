@@ -8,7 +8,6 @@ const double MY_PI = 3.1415926;
 
 const int height = 800;
 const int width = 800;
-bool is_orth = false;
 
 Model *model = NULL;
 const std::string output_dir = "../output/";
@@ -27,13 +26,17 @@ vec3 to_vec3(const vec4 v4){
     return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
 }
 
+vec3 mvp_trans(mat<4, 4> mvp, vec3 coord){
+    return to_vec3(mvp*to_vec4(coord));
+}
+
 mat<4, 4> get_model_trans(const mat<4, 4> model_pos){
     mat<4, 4> m = mat<4, 4>::identity();
 
     mat<4, 4> scale = mat<4, 4>::identity()*100;
     scale[3][3] = 1;
 
-    double angle = 90;
+    double angle = 40;
     angle = angle * MY_PI / 180.f;
     mat<4, 4> rot = mat<4, 4>::identity();
     rot[0][0] = cos(angle);
@@ -84,8 +87,10 @@ void draw(){
     double *zbuffer = new double[width*height];
     for(int i = 0;i < width*height;i ++ ) zbuffer[i] = -std::numeric_limits<double>::max();
 
-    vec3 light_dir(0, 0, -1);   //shoot from infinite far place
+    // vec3 light_dir(pow(3., -0.5), pow(3., -0.5), pow(3., -0.5));   //shoot from infinite far place
+    vec3 light_dir(0, 0, 1);
     vec3 eye_pos(0, 0, 400);
+
     double  eye_fov = 45, 
             aspect_ratio = width/height,
             zNear = -0.1,
@@ -114,11 +119,9 @@ void draw(){
         for(int j = 0;j < 3;j ++ ){
             world_coords[j] = model->vert(i, j);
         }
-        vec3 n = cross(world_coords[2] - world_coords[0], world_coords[1] - world_coords[0]).normalize();
-        double ill_indensity = n * light_dir;
-        ill_indensity = std::max(ill_indensity, 0.0);
+        vec3 ill_indensities;
         for(int j = 0;j < 3;j ++ ){
-                world_coords[j] = to_vec3(mvp*to_vec4(world_coords[j]));
+                world_coords[j] = mvp_trans(mvp, world_coords[j]);
                 tex_coords[j] = model->uv(i, j);
 
                 vec3 v = world_coords[j];
@@ -130,9 +133,20 @@ void draw(){
                 //only when light indensity above zero
                 tex_coords[j].x = 1 - tex_coords[j].x;
                 tex_coords[j].y = 1 - tex_coords[j].y;
+
+                //gouraud shading
+                ill_indensities[j] = model->normal(i, j).normalize() * light_dir;
         }
-        triangle(screen_coords, tex_coords, zbuffer, image, tex, ill_indensity);
+        triangle(screen_coords, tex_coords, zbuffer, image, tex, ill_indensities);
     }
+
+    vec3 origin = mvp_trans(mvp, vec3(0, 0, 0));
+    vec3 xaxis = mvp_trans(mvp, vec3(1, 0, 0));
+    vec3 yaxis = mvp_trans(mvp, vec3(0, 1, 0));
+    vec3 zaxis = mvp_trans(mvp, vec3(0, 0, 1));
+    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((xaxis.x + 1.)*width/2), int((xaxis.y + 1.)*height/2), image, red);
+    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((yaxis.x + 1.)*width/2), int((yaxis.y + 1.)*height/2), image, green);
+    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((zaxis.x + 1.)*width/2), int((zaxis.y + 1.)*height/2), image, blue);
 
     printf("model grid done\n");
 
@@ -150,7 +164,7 @@ void draw(){
     for(int i = 0;i < width;i ++ )
         for(int j = 0;j < height;j ++ )
         {
-            double ratio = zbuffer[i + j*width];
+            double ratio = zbuffer[i + j*width]*10;
             buffer.set(i, j, TGAColor(255*ratio, 255*ratio, 255*ratio, 255));
         }
     if(buffer.write_tga_file(output_dir + "zbuffer.tga"))
