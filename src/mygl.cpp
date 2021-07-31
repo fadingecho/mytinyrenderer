@@ -1,17 +1,29 @@
-#include "../include/tgaimage.h"
-#include <vector>
-#include <cmath>
-#include "../include/geometry.h"
-#include "../include/model.h"
-#include "../include/mygl.h"
-#include <string>
-#include <limits>
+#include "mygl.h"
+#define MY_PI 3.1415926
 
 void my_clear(TGAImage& image, const TGAColor color){
     for(int i = 0;i < image.get_width();i ++ )
         for(int j = 0;j < image.get_height();j ++ ){
             image.set(i, j, color);
         }
+}
+
+vec<4> to_vec4(const vec<3> v3){
+    vec4 v4;
+    v4[0] = v3[0];
+    v4[1] = v3[1];
+    v4[2] = v3[2];
+    v4[3] = 1;
+    return v4;
+}
+
+vec3 to_vec3(const vec4 v4){
+    double w = 1/v4[3];
+    return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
+}
+
+vec3 trans_vec3(mat<4, 4> trans, vec3 coord){
+    return to_vec3(trans*to_vec4(coord));
 }
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color){
@@ -98,7 +110,7 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
     return vec3(-1, 1, 1);
 }
 
-void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &image, TGAImage &texture, vec3 ill_indensities){
+void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image){
     vec2 pts2[3] = {vec2(pts[0].x, pts[0].y),vec2(pts[1].x, pts[1].y),vec2(pts[2].x, pts[2].y)};
 
     vec2 bboxmin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
@@ -116,29 +128,93 @@ void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &ima
     }
     
     vec2 uv;
-    int tw = texture.get_width(), th = texture.get_height();
-    for(P.x = bboxmin.x;P.x < bboxmax.x;P.x ++ )
+    vec3 P;
+    for(P.x =bboxmin.x;P.x < bboxmax.x;P.x ++ )
         for(P.y = bboxmin.y;P.y < bboxmax.y;P.y ++ )
         {
             vec3 bc_screen= barycentric(pts2, vec2(P.x, P.y));
             if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
             P.z = interpolation(bc_screen, pts[0].z, pts[1].z, pts[2].z);
-
             if(P.z > zbuff[(int)(P.x + P.y*image.get_width())]){
-                // image.set(P.x, P.y, white);
-                // image.set(P.x, P.y, TGAColor(255*ill_indensity, 255*ill_indensity, 255*ill_indensity, 255));
-                double ill_indensity = interpolation(bc_screen, ill_indensities[0], ill_indensities[1], ill_indensities[2]);
-                TGAColor color = black;
-                vec3 color_v = vec3(0, 0, 0);
-                if(ill_indensity > 0){
-                    uv = interpolation(bc_screen, uvs[0], uvs[1], uvs[2]);
-                    uv.x *= th;
-                    uv.y *= tw;
-                    color = texture.get(uv.x, uv.y)*ill_indensity;
-                }
-              
+                TGAColor color;
+                bool discard = shader.fragment(bc_screen, color);
+                if(discard) continue;
                 image.set(P.x, P.y, color);
                 zbuff[(int)(P.x + P.y*image.get_width())] = P.z;
             } 
         }
+}
+
+mat<4, 4> get_viewport(int x, int y, int w, int h){
+    mat<4, 4> m = mat<4, 4>::identity();
+    m[0][3] = x+w/2.f;
+    m[1][3] = y+h/2.f;
+    m[2][3] = 255/2.f;
+
+    m[0][0] = w/2.f;
+    m[1][1] = h/2.f;
+    m[2][2] = 255/2.f;
+    return m;
+}
+
+mat<4, 4> get_model_trans(const mat<4, 4> model_pos){
+    mat<4, 4> m = mat<4, 4>::identity();
+
+    mat<4, 4> scale = mat<4, 4>::identity()*100;
+    scale[3][3] = 1;
+
+    double angle = 0;
+    angle = angle * MY_PI / 180.f;
+    mat<4, 4> rot = mat<4, 4>::identity();
+    rot[0][0] = cos(angle);
+    rot[0][2] = sin(angle);
+    rot[2][0] = -sin(angle);
+    rot[2][2] = cos(angle);
+    return rot*scale*m;
+}
+
+mat<4, 4> get_view(const vec3 eye_pos, const vec3 center, const vec3 up){
+    vec3 z = (center - eye_pos).normalize(),
+         x = cross(up, z).normalize(),
+         y = cross(z, x).normalize();
+
+    mat<4, 4> to_center = mat<4, 4>::identity(),
+              base = mat<4, 4>::identity();
+
+    for(int i = 0;i < 3;i ++ ){
+        to_center[i][3] = -center[i];
+        base[0][i] = x[i];
+        base[1][i] = y[i];
+        base[2][i] = z[i];
+    }
+    
+    return base*to_center;
+}
+
+mat<4, 4> get_projection(double eye_fov, double aspect_ratio, double zNear, double zFar){
+    mat<4, 4> projection = mat<4, 4>::identity();
+    //the way I create these translation is same as games101, not tinyrenderer
+    double l, r, b, t;
+    t = -std::tan(eye_fov/360.0*MY_PI) * std::abs(zNear);
+    r = aspect_ratio * t;
+    l = -r;
+    b = -t;
+
+    mat<4,4> orth_l = mat<4,4>::identity();
+    orth_l[0][0] = 2/(r - l);
+    orth_l[1][1] = 2/(b - t);
+    orth_l[2][2] = 2/(zNear - zFar);
+    
+    mat<4,4> orth_r = mat<4,4>::identity();
+    orth_r[0][3] = -(r + l)/2;
+    orth_r[1][3] = -(t + b)/2;
+    orth_r[2][3] = -(zNear + zFar)/2;
+
+    mat<4,4> to_orth = mat<4,4>::zero();
+    to_orth[0][0] = zNear;
+    to_orth[1][1] = zNear;
+    to_orth[2][2] = zNear + zFar;
+    to_orth[2][3] = -zNear*zFar;
+    to_orth[3][2] = 1;
+    return orth_l * orth_r * to_orth * projection;
 }

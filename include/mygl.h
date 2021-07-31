@@ -12,7 +12,21 @@ const TGAColor blue = TGAColor(0, 0, 255, 255);
 const TGAColor green = TGAColor(0, 255, 0, 255);
 const TGAColor black = TGAColor(0, 0, 0, 255);
 
+struct IShader {
+    virtual vec3 vertex(int iface, int nthvert) = 0;
+    virtual bool fragment(vec3 bar, TGAColor &color) = 0;
+};
+
+vec<4> to_vec4(const vec<3> v3);
+vec3 to_vec3(const vec4 v4);
+vec3 trans_vec3(mat<4, 4> trans, vec3 coord);
+
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color);
 vec3 barycentric(const vec2 pts[3], const vec2 P);
-void triangle(const vec3 pts[3], const vec2 uvs[3], double *zbuff, TGAImage &image, TGAImage &texture, vec3 ill_indensity);
+void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image);
 void my_clear(TGAImage& image, const TGAColor color);
+
+mat<4, 4> get_viewport(int x, int y, int w, int h);
+mat<4, 4> get_model_trans(const mat<4, 4> model_pos);
+mat<4, 4> get_view(const vec3 eye_pos, const vec3 center, const vec3 up);
+mat<4, 4> get_projection(double eye_fov, double aspect_ratio, double zNear, double zFar);
