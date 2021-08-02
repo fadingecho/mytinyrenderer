@@ -8,22 +8,24 @@ void my_clear(TGAImage& image, const TGAColor color){
         }
 }
 
-vec<4> to_vec4(const vec<3> v3){
-    vec4 v4;
-    v4[0] = v3[0];
-    v4[1] = v3[1];
-    v4[2] = v3[2];
-    v4[3] = 1;
-    return v4;
-}
+// vec<4> to_vec4(const vec<3> v3){
+//     vec4 v4;
+//     v4[0] = v3[0];
+//     v4[1] = v3[1];
+//     v4[2] = v3[2];
+//     v4[3] = 1;
+//     return v4;
+// }
 
-vec3 to_vec3(const vec4 v4){
-    double w = 1/v4[3];
-    return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
-}
+// vec3 to_vec3(const vec4 v4){
+//     double w = 1/v4[3];
+//     return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
+// }
 
 vec3 trans_vec3(mat<4, 4> trans, vec3 coord){
-    return to_vec3(trans*to_vec4(coord));
+    vec4 v4 = trans*embed<4>(coord);
+    double w = 1/v4[3];
+    return proj<3>(v4)*w;
 }
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color){
@@ -145,15 +147,15 @@ void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image)
         }
 }
 
-mat<4, 4> get_viewport(int x, int y, int w, int h){
+mat<4, 4> get_viewport(int x, int y, int w, int h, int d){
     mat<4, 4> m = mat<4, 4>::identity();
     m[0][3] = x+w/2.f;
     m[1][3] = y+h/2.f;
-    m[2][3] = 255/2.f;
+    m[2][3] = d/2.f;
 
     m[0][0] = w/2.f;
     m[1][1] = h/2.f;
-    m[2][2] = 255/2.f;
+    m[2][2] = d/2.f;
     return m;
 }
 
@@ -196,7 +198,7 @@ mat<4, 4> get_projection(double eye_fov, double aspect_ratio, double zNear, doub
     //the way I create these translation is same as games101, not tinyrenderer
     double l, r, b, t;
     t = -std::tan(eye_fov/360.0*MY_PI) * std::abs(zNear);
-    r = aspect_ratio * t;
+    r = -aspect_ratio * t;
     l = -r;
     b = -t;
 

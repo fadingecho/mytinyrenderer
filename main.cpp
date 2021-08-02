@@ -10,7 +10,7 @@ const int depth = 255;
 
 vec3 light_dir(0, 0, 1);
 vec3 eye_pos(0, 0, 0);
-vec3 center(150, 300, 300);
+vec3 center(100, 100, 270);
 vec3 up(0, 1, 0);
 
 mat<4, 4> model_trans;
@@ -21,33 +21,49 @@ mat<4, 4> view_port;
 
 Model *model = NULL;
 const std::string output_dir = "../output/";
+TGAImage tex0;
+TGAImage tex1;
+
+TGAColor show_nv3(vec3 v3){
+    return TGAColor(v3.x*255, v3.y*255, v3.z*255);
+}
 
 struct GouraudShader : public IShader{
-    vec3 varying_intensity;//written by vertex shader, read by fragment shader
+    mat<2, 3> v_uv;//written by vertex shader, read by fragment shader
+    mat<4, 4> u_vp_mvp;
+    mat<4, 4> u_vp_mvp_it;
+
+    mat<4, 4> u_model;
+    mat<4, 4> u_model_it;
+
+    vec2 v_t0;
+    vec2 v_t1;
 
     virtual vec3 vertex(int iface, int nthvert){
-        varying_intensity[nthvert] = std::max(0., model->normal(iface, nthvert)*light_dir);
+        v_uv.set_col(nthvert, model->uv(iface, nthvert));
         vec3 gl_vertex = model->vert(iface, nthvert);
-        return trans_vec3(mvp, gl_vertex);
+
+        v_t0 = vec2(tex0.get_width(), tex0.get_height());
+        v_t1 = vec2(tex1.get_width(), tex1.get_height());
+        return trans_vec3(u_vp_mvp, gl_vertex);
     }
 
     virtual bool fragment(vec3 bar, TGAColor &color){
-        double intensity = varying_intensity*bar;
-        color = TGAColor(255, 255, 255)*intensity;
+        vec3 l, n;
+
+        vec2 b_uv = v_uv*bar;
+        TGAColor c = tex1.get(v_t1.x*(1-b_uv.x), v_t1.y*(1-b_uv.y));
+        n = vec3((double)c[0], (double)c[1], (double)c[2]);
+        c = tex0.get(v_t0.x*(1-b_uv.x), v_t0.y*(1-b_uv.y));
+
+        l = trans_vec3(u_model, light_dir).normalize(); 
+        n = trans_vec3(u_model, n).normalize();
+       
+        color = c*(l*n);
         return false;   //discard(mask...)
     }
 
 };
-
-void show_model_origin(mat<4, 4> mvp, TGAImage image){
-    vec3 origin = trans_vec3(mvp, vec3(0, 0, 0));
-    vec3 xaxis = trans_vec3(mvp, vec3(1, 0, 0));
-    vec3 yaxis = trans_vec3(mvp, vec3(0, 1, 0));
-    vec3 zaxis = trans_vec3(mvp, vec3(0, 0, 1));
-    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((xaxis.x + 1.)*width/2), int((xaxis.y + 1.)*height/2), image, red);
-    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((yaxis.x + 1.)*width/2), int((yaxis.y + 1.)*height/2), image, green);
-    line(int((origin.x + 1.)*width/2), int((origin.y + 1.)*height/2), int((zaxis.x + 1.)*width/2), int((zaxis.y + 1.)*height/2), image, blue);
-}
 
 int main(const int argc, const char** argv)
 {
@@ -62,21 +78,26 @@ int main(const int argc, const char** argv)
             f1 = (zNear - zFar)/2.0,
             f2 = (zFar + zNear)/2.0;
  
-    model_trans = get_model_trans(model_trans);
-    view_trans = get_view(eye_pos, center, up);
-    projection_trans = get_projection(eye_fov, aspect_ratio, zNear, zFar);
+    model_trans         = get_model_trans(model_trans);
+    view_trans          = get_view(eye_pos, center, up);
+    projection_trans    = get_projection(eye_fov, aspect_ratio, zNear, zFar);
     mvp = projection_trans*view_trans*model_trans;
-    view_port = get_viewport(0, 0, width, height);
-    mvp = view_port*mvp;
+    view_port           = get_viewport(0, 0, width, height, depth);
 
     /*
     write model
     */
     TGAImage image(width, height, TGAImage::RGB), tex;
     my_clear(image, white);
-    tex.read_tga_file("../obj/_diffuse.tga");
+    tex0.read_tga_file("../obj/_diffuse.tga");
+    tex1.read_tga_file("../obj/african_head_nm.tga");
 
     GouraudShader shader;
+    shader.u_vp_mvp = view_port*mvp;
+    shader.u_vp_mvp_it = (view_port*mvp).invert_transpose();
+
+    shader.u_model = model_trans;
+    shader.u_model_it = model_trans.invert_transpose();
     for(int i = 0;i <model->nfaces();i ++ ){
         //for everyface, get vertex and draw lines
         vec3 screen_coords[3];
@@ -89,7 +110,14 @@ int main(const int argc, const char** argv)
         triangle(screen_coords, shader, zbuffer, image);
     }
 
-    show_model_origin(mvp, image);
+    vec3 origin = trans_vec3(view_port*mvp, vec3(0, 0, 0));
+    vec3 xaxis = trans_vec3(view_port*mvp, vec3(1, 0, 0));
+    vec3 yaxis = trans_vec3(view_port*mvp, vec3(0, 1, 0));
+    vec3 zaxis = trans_vec3(view_port*mvp, vec3(0, 0, 1));
+    line(int(origin.x), int(origin.y), int(xaxis.x), int(xaxis.y), image, red);
+    line(int(origin.x), int(origin.y), int(yaxis.x), int(yaxis.y), image, green);
+    line(int(origin.x), int(origin.y), int(zaxis.x), int(zaxis.y), image, blue);
+
     if(image.write_tga_file(output_dir + "output.tga"))
         std::cout << "file output to " << output_dir << std::endl;
     else 
