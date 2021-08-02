@@ -8,9 +8,10 @@ const int height = 800;
 const int width = 800;
 const int depth = 255;
 
-vec3 light_dir(0, 0, 1);
+vec3 light_dir(-1, 0, 0);
 vec3 eye_pos(0, 0, 0);
-vec3 center(100, 100, 270);
+vec3 center(250, 100, 250);
+// vec3 center(100, 100, 270);
 vec3 up(0, 1, 0);
 
 mat<4, 4> model_trans;
@@ -29,12 +30,15 @@ TGAColor show_nv3(vec3 v3){
 }
 
 struct GouraudShader : public IShader{
+    public:
     mat<2, 3> v_uv;//written by vertex shader, read by fragment shader
     mat<4, 4> u_vp_mvp;
     mat<4, 4> u_vp_mvp_it;
 
     mat<4, 4> u_model;
     mat<4, 4> u_model_it;
+
+    vec3 v_ver[3];  //for barycentric coords in world space
 
     vec2 v_t0;
     vec2 v_t1;
@@ -45,21 +49,22 @@ struct GouraudShader : public IShader{
 
         v_t0 = vec2(tex0.get_width(), tex0.get_height());
         v_t1 = vec2(tex1.get_width(), tex1.get_height());
+
+        v_ver[nthvert] = gl_vertex;
         return trans_vec3(u_vp_mvp, gl_vertex);
     }
 
     virtual bool fragment(vec3 bar, TGAColor &color){
         vec3 l, n;
-
         vec2 b_uv = v_uv*bar;
         TGAColor c = tex1.get(v_t1.x*(1-b_uv.x), v_t1.y*(1-b_uv.y));
-        n = vec3((double)c[0], (double)c[1], (double)c[2]);
+        n = vec3(((double)c[2])/255*2-1, ((double)c[1])/255*2-1, ((double)c[0]/255*2-1));   //according to tinyredner/model.cpp, cant understand it
         c = tex0.get(v_t0.x*(1-b_uv.x), v_t0.y*(1-b_uv.y));
 
         l = trans_vec3(u_model, light_dir).normalize(); 
-        n = trans_vec3(u_model, n).normalize();
-       
-        color = c*(l*n);
+        n = trans_vec3(u_model_it, n).normalize();
+        double intensity = std::max<double>(0.0, (l*n));
+        color = c*intensity;
         return false;   //discard(mask...)
     }
 
@@ -106,7 +111,6 @@ int main(const int argc, const char** argv)
             screen_coords[j].x = (int)screen_coords[j].x;
             screen_coords[j].y = (int)screen_coords[j].y;
         }
-        
         triangle(screen_coords, shader, zbuffer, image);
     }
 
