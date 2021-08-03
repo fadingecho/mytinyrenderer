@@ -4,13 +4,13 @@
 #include "global.h"
 #include "mygl.h"
 
-const int height = 800;
-const int width = 800;
+const int height = 1024;
+const int width = 1024;
 const int depth = 255;
 
-vec3 light_dir(-1, 0, 0);
+vec3 light_dir(0, 0, -1);
 vec3 eye_pos(0, 0, 0);
-vec3 center(250, 100, 250);
+vec3 center(0, 0, 300);
 // vec3 center(100, 100, 270);
 vec3 up(0, 1, 0);
 
@@ -57,13 +57,13 @@ struct GouraudShader : public IShader{
     virtual bool fragment(vec3 bar, TGAColor &color){
         vec3 l, n;
         vec2 b_uv = v_uv*bar;
-        TGAColor c = tex1.get(v_t1.x*(1-b_uv.x), v_t1.y*(1-b_uv.y));
+        TGAColor c = tex1.get(v_t1.x*(b_uv.x), v_t1.y*(1-b_uv.y));
         n = vec3(((double)c[2])/255*2-1, ((double)c[1])/255*2-1, ((double)c[0]/255*2-1));   //according to tinyredner/model.cpp, cant understand it
-        c = tex0.get(v_t0.x*(1-b_uv.x), v_t0.y*(1-b_uv.y));
+        c = tex0.get(v_t0.x*(b_uv.x), v_t0.y*(1-b_uv.y));
 
         l = trans_vec3(u_model, light_dir).normalize(); 
         n = trans_vec3(u_model_it, n).normalize();
-        double intensity = std::max<double>(0.0, (l*n));
+        double intensity = std::max<double>(0.0, -(l*n));
         color = c*intensity;
         return false;   //discard(mask...)
     }
@@ -72,7 +72,7 @@ struct GouraudShader : public IShader{
 
 int main(const int argc, const char** argv)
 {
-    model = new Model("../obj/head.obj");
+    model = new Model("../obj/diablo3_pose/object.obj");
     double *zbuffer = new double[width*height];
     for(int i = 0;i < width*height;i ++ ) zbuffer[i] = -std::numeric_limits<double>::max();
 
@@ -94,15 +94,15 @@ int main(const int argc, const char** argv)
     */
     TGAImage image(width, height, TGAImage::RGB), tex;
     my_clear(image, white);
-    tex0.read_tga_file("../obj/_diffuse.tga");
-    tex1.read_tga_file("../obj/african_head_nm.tga");
+    tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
+    tex1.read_tga_file("../obj/diablo3_pose/_nm.tga");
 
     GouraudShader shader;
     shader.u_vp_mvp = view_port*mvp;
     shader.u_vp_mvp_it = (view_port*mvp).invert_transpose();
 
-    shader.u_model = model_trans;
-    shader.u_model_it = model_trans.invert_transpose();
+    shader.u_model =(view_trans*model_trans);
+    shader.u_model_it = (view_trans*model_trans).invert_transpose();
     for(int i = 0;i <model->nfaces();i ++ ){
         //for everyface, get vertex and draw lines
         vec3 screen_coords[3];
