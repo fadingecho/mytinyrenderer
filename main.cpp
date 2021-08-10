@@ -8,7 +8,7 @@ const int height = 1024;
 const int width = 1024;
 const int depth = 255;
 
-vec3 light_dir(0, 0, -1);
+vec3 light_dir(-1, -1, -1);
 vec3 eye_pos(0, 0, 0);
 vec3 center(0, 0, 300);
 // vec3 center(100, 100, 270);
@@ -24,6 +24,7 @@ Model *model = NULL;
 const std::string output_dir = "../output/";
 TGAImage tex0;
 TGAImage tex1;
+TGAImage tex2;
 
 TGAColor show_nv3(vec3 v3){
     return TGAColor(v3.x*255, v3.y*255, v3.z*255);
@@ -38,10 +39,9 @@ struct GouraudShader : public IShader{
     mat<4, 4> u_model;
     mat<4, 4> u_model_it;
 
-    vec3 v_ver[3];  //for barycentric coords in world space
-
     vec2 v_t0;
     vec2 v_t1;
+    vec2 v_t2;
 
     virtual vec3 vertex(int iface, int nthvert){
         v_uv.set_col(nthvert, model->uv(iface, nthvert));
@@ -49,30 +49,60 @@ struct GouraudShader : public IShader{
 
         v_t0 = vec2(tex0.get_width(), tex0.get_height());
         v_t1 = vec2(tex1.get_width(), tex1.get_height());
-
-        v_ver[nthvert] = gl_vertex;
+        v_t2 = vec2(tex2.get_width(), tex2.get_height());
         return trans_vec3(u_vp_mvp, gl_vertex);
     }
 
     virtual bool fragment(vec3 bar, TGAColor &color){
-        vec3 l, n;
+        vec3 l, n, r; //light dir, normal, reflected light dir
         vec2 b_uv = v_uv*bar;
+
         TGAColor c = tex1.get(v_t1.x*(b_uv.x), v_t1.y*(1-b_uv.y));
         n = vec3(((double)c[2])/255*2-1, ((double)c[1])/255*2-1, ((double)c[0]/255*2-1));   //according to tinyredner/model.cpp, cant understand it
-        c = tex0.get(v_t0.x*(b_uv.x), v_t0.y*(1-b_uv.y));
-
+        
         l = trans_vec3(u_model, light_dir).normalize(); 
         n = trans_vec3(u_model_it, n).normalize();
-        double intensity = std::max<double>(0.0, -(l*n));
-        color = c*intensity;
-        return false;   //discard(mask...)
+
+        double nl = -(l*n);
+    
+        r = (n*(nl*2.0) + l).normalize();
+
+        double diff = std::max<double>(nl, 0.0);
+        double spec = 1-pow(1-std::max(r.z, 0.0), (double)tex2.get(v_t2.x*(b_uv.x), v_t2.y*(1-b_uv.y))[0]);
+        double ambi = 5;
+
+        c = tex0.get(v_t0.x*(b_uv.x), v_t0.y*(1-b_uv.y));
+        // color = c*diff;
+        // color = TGAColor(255*r.x, 255*r.y, 255*r.z);
+        // color = white*(std::max(r.z, 0.0));
+        // color = TGAColor((double)tex2.get(v_t2.x*(b_uv.x), v_t2.y*(1-b_uv.y))[0], 0, 0);
+        for (int i=0; i<3; i++) color[i] = std::min<double>(ambi + (double)c[i]*(diff + 0.6*spec), 255);
+        // color = white * std::min<double>(1, spec);
+        return false;   //discard
     }
 
 };
 
+void load(){
+    // tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
+    // tex1.read_tga_file("../obj/diablo3_pose/_nm.tga");
+    // tex2.read_tga_file("../obj/diablo3_pose/_spec.tga");
+
+    // model = new Model("../obj/diablo3_pose/object.obj");
+
+    tex0.read_tga_file("../obj/african_head/_diffuse.tga");
+    tex1.read_tga_file("../obj/african_head/_nm.tga");
+    tex2.read_tga_file("../obj/african_head/_spec.tga");
+
+    model = new Model("../obj/african_head/object.obj");
+}
+
 int main(const int argc, const char** argv)
 {
-    model = new Model("../obj/diablo3_pose/object.obj");
+    TGAImage image(width, height, TGAImage::RGB);
+    my_clear(image, white);
+    load();
+
     double *zbuffer = new double[width*height];
     for(int i = 0;i < width*height;i ++ ) zbuffer[i] = -std::numeric_limits<double>::max();
 
@@ -92,11 +122,6 @@ int main(const int argc, const char** argv)
     /*
     write model
     */
-    TGAImage image(width, height, TGAImage::RGB), tex;
-    my_clear(image, white);
-    tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
-    tex1.read_tga_file("../obj/diablo3_pose/_nm.tga");
-
     GouraudShader shader;
     shader.u_vp_mvp = view_port*mvp;
     shader.u_vp_mvp_it = (view_port*mvp).invert_transpose();
