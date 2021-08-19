@@ -22,10 +22,13 @@ void my_clear(TGAImage& image, const TGAColor color){
 //     return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
 // }
 
-vec3 trans_vec3(mat<4, 4> trans, vec3 coord){
-    vec4 v4 = trans*embed<4>(coord);
-    double w = 1/v4[3];
-    return proj<3>(v4)*w;
+vec3 trans_vec3(mat<4, 4> trans, vec3 coord, double fill){
+    vec4 v4 = trans*embed<4>(coord, fill);
+    if(fill > std::numeric_limits<double>::epsilon()){
+        double w = 1/v4[3];
+        return proj<3>(v4)*w;
+    }
+    return proj<3>(v4);
 }
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color){
@@ -84,18 +87,6 @@ template<int n> vec<n> interpolation(vec3 bcoords, vec<n> v1, vec<n> v2, vec<n> 
 }
 
 vec3 barycentric(const vec2 pts[3], const vec2 P){
-    // vec2 v0 = pts[1] - pts[0], v1 = pts[2] - pts[0], v2 = P - pts[0];
-    // double d00 = v0*v0;
-    // double d01 = v0*v1;
-    // double d11 = v1*v1;
-    // double d20 = v2*v0;
-    // double d21 = v2*v1;
-    // double denom = d00*d11 - d01*d01;
-    // double v = (d11 * d20 - d01 * d21) / denom;
-    // double w = (d00 * d21 - d01 * d20) / denom;
-    // double u = 1.0f - v - w;
-    // return vec3(u, v, w);
-
     vec2 A = pts[0], B = pts[1], C = pts[2];
     vec3 x(C[0] - A[0], B[0] - A[0], A[0] - P[0]);
     vec3 y(C[1] - A[1], B[1] - A[1], A[1] - P[1]);
@@ -130,19 +121,18 @@ void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image)
     }
     
     vec2 uv;
-    vec3 P;
-    for(P.x =bboxmin.x;P.x < bboxmax.x;P.x ++ )
-        for(P.y = bboxmin.y;P.y < bboxmax.y;P.y ++ )
+    for(int x =(int)bboxmin.x;x < (int)bboxmax.x+1;x ++ )
+        for(int y = (int)bboxmin.y;y < (int)bboxmax.y+1;y ++ )
         {
-            vec3 bc_screen= barycentric(pts2, vec2(P.x, P.y));
+            vec3 bc_screen= barycentric(pts2, vec2(x, y));
             if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
-            P.z = interpolation(bc_screen, pts[0].z, pts[1].z, pts[2].z);
-            if(P.z > zbuff[(int)(P.x + P.y*image.get_width())]){
+            double z = interpolation(bc_screen, pts[0].z, pts[1].z, pts[2].z);
+            if(z > zbuff[(int)(x + y*image.get_width())]){
                 TGAColor color;
                 bool discard = shader.fragment(bc_screen, color);
                 if(discard) continue;
-                image.set(P.x, P.y, color);
-                zbuff[(int)(P.x + P.y*image.get_width())] = P.z;
+                image.set(x, y, color);
+                zbuff[(int)(x + y*image.get_width())] = z;
             } 
         }
 }

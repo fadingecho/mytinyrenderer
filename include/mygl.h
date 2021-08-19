@@ -19,7 +19,7 @@ struct IShader {
 
 vec<4> to_vec4(const vec<3> v3);
 vec3 to_vec3(const vec4 v4);
-vec3 trans_vec3(mat<4, 4> trans, vec3 coord);
+vec3 trans_vec3(mat<4, 4> trans, vec3 coord, double fill);
 
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color);
 vec3 barycentric(const vec2 pts[3], const vec2 P);
