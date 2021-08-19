@@ -96,12 +96,12 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
 }
 
 void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImage &image){
-    vec3 pts[3];
+    vec3 screen_coords[3];// world coords in the paras are coords after camera trans, actually
     for(int i = 0;i < 3;i ++ ){
-        pts[i] = trans_vec3(shader.u_viewport*shader.u_proj, world_coords[i], 1.0);
+        screen_coords[i] = trans_vec3(shader.u_viewport*shader.u_proj, world_coords[i], 1.0);
     }
     vec2 wc2d[3] = {vec2(world_coords[0].x, world_coords[0].y),vec2(world_coords[1].x, world_coords[1].y),vec2(world_coords[2].x, world_coords[2].y)};
-    vec2 pts2[3] = {vec2(pts[0].x, pts[0].y),vec2(pts[1].x, pts[1].y),vec2(pts[2].x, pts[2].y)};
+    vec2 sc2d[3] = {vec2(screen_coords[0].x, screen_coords[0].y),vec2(screen_coords[1].x, screen_coords[1].y),vec2(screen_coords[2].x, screen_coords[2].y)};
 
     vec2 bboxmin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
     vec2 bboxmax(-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max());
@@ -109,8 +109,8 @@ void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImag
     for(int i = 0;i < 3;i ++ )
         for(int j = 0;j < 2;j ++ )
         {
-            bboxmin[j] = std::min(bboxmin[j] , pts2[i][j]);
-            bboxmax[j] = std::max(bboxmax[j], pts2[i][j]);
+            bboxmin[j] = std::min(bboxmin[j] , sc2d[i][j]);
+            bboxmax[j] = std::max(bboxmax[j], sc2d[i][j]);
         }
     for(int i = 0;i < 2;i ++ ) {
         bboxmin[i] = std::max(0., bboxmin[i]);
@@ -121,12 +121,12 @@ void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImag
     for(int x =(int)bboxmin.x;x < (int)bboxmax.x+1;x ++ )
         for(int y = (int)bboxmin.y;y < (int)bboxmax.y+1;y ++ )
         {
-            vec3 bc_screen= barycentric(pts2, vec2(x, y));
-            double z = vec3(pts[0][2], pts[1][2], pts[2][2])*bc_screen;
+            vec3 bc_screen= barycentric(sc2d, vec2(x, y));
+            double z = vec3(screen_coords[0][2], screen_coords[1][2], screen_coords[2][2])*bc_screen;
             vec3 v = trans_vec3(shader.u_projI*shader.u_vpI, vec3(x, y, z), 1.0);
             vec3 bc_world = barycentric(wc2d, vec2(v.x, v.y));
 
-            if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0 || z < zbuff[(int)(x + y*image.get_width())]) continue;
+            if(z < zbuff[(int)(x + y*image.get_width())] || bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
             TGAColor color;
             bool discard = shader.fragment(bc_world, color);
             if(discard) continue;
@@ -147,11 +147,20 @@ mat<4, 4> get_viewport(int x, int y, int w, int h, int d){
     return m;
 }
 
-mat<4, 4> get_model_trans(const mat<4, 4> model_pos){
-    mat<4, 4> m = mat<4, 4>::identity();
-
-    mat<4, 4> scale = mat<4, 4>::identity()*100;
+mat<4, 4> get_scale(const double ratio){
+    mat<4, 4> scale = mat<4, 4>::identity()*ratio;
     scale[3][3] = 1;
+    return scale;
+}
+
+mat<4, 4> get_translation(const vec3 world_coords){
+    mat<4, 4> translation = mat<4, 4>::identity();
+    translation.set_col(3, embed<4>(world_coords));
+    return translation;
+}
+
+mat<4, 4> get_model_trans(const double ratio, const vec3 world_coords){
+    mat<4, 4> m = mat<4, 4>::identity();
 
     double angle = 0;
     angle = angle * MY_PI / 180.f;
@@ -160,7 +169,7 @@ mat<4, 4> get_model_trans(const mat<4, 4> model_pos){
     rot[0][2] = sin(angle);
     rot[2][0] = -sin(angle);
     rot[2][2] = cos(angle);
-    return rot*scale*m;
+    return rot*get_translation(world_coords)*get_scale(ratio)*m;
 }
 
 mat<4, 4> get_view(const vec3 eye_pos, const vec3 center, const vec3 up){

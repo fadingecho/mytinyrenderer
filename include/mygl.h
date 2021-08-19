@@ -32,7 +32,10 @@ vec3 barycentric(const vec2 pts[3], const vec2 P);
 void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image);
 void my_clear(TGAImage& image, const TGAColor color);
 
+mat<4, 4> get_scale(const double ratio);
+mat<4, 4> get_translation(const vec3 world_coords);
+
 mat<4, 4> get_viewport(int x, int y, int w, int h, int d);
-mat<4, 4> get_model_trans(const mat<4, 4> model_pos);
+mat<4, 4> get_model_trans(const double ratio, const vec3 world_coords);
 mat<4, 4> get_view(const vec3 eye_pos, const vec3 center, const vec3 up);
 mat<4, 4> get_projection(double eye_fov, double aspect_ratio, double zNear, double zFar);

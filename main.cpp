@@ -3,6 +3,7 @@
 #include "model.h"
 #include "global.h"
 #include "mygl.h"
+#include "string"
 
 const int height = 800;
 const int width = 800;
@@ -11,8 +12,32 @@ const int depth = 255;
 vec3 light_dir(-1, 0, 0);
 vec3 light_pos(300, 300, 0);
 vec3 eye_pos(0, 0, 0);
-vec3 center(0, 200, 300);
+vec3 center(180, 150, 300);
 vec3 up(0, 1, 0);
+
+double model_scale[2] = {100, 100};
+vec3 model_poi[2] = {
+    vec3(0, 0, 0),
+    vec3(0, 0, -100)
+};
+
+std::string texture_path[2][3] = {
+    {
+        "../obj/diablo3_pose/_diffuse.tga",
+        "../obj/diablo3_pose/_nm_tangent.tga",
+        "../obj/diablo3_pose/_spec.tga"
+    },
+    {
+        "../obj/floor_diffuse.tga",
+        "../obj/floor_nm_tangent.tga",
+        ""
+    }
+}; 
+
+std::string model_path[2] = {
+    "../obj/diablo3_pose/object.obj",
+    "../obj/floor.obj"
+};
 
 mat<4, 4> model_trans;
 mat<4, 4> view_trans;
@@ -22,9 +47,7 @@ mat<4, 4> view_port;
 
 Model *model = NULL;
 const std::string output_dir = "../output/";
-TGAImage tex0;
-TGAImage tex1;
-TGAImage tex2;
+TGAImage tex[3];
 
 TGAColor show_nv3(vec3 v3){
     return TGAColor(v3.x*255, v3.y*255, v3.z*255);
@@ -35,13 +58,6 @@ struct BlingPhongShader : public IShader{
     vec3 v_tri[3];
     mat<2, 3> v_uv;//written by vertex shader, read by fragment shader
     mat<3, 3> v_nrm;//fs will interpolate normal
-
-    mat<4, 4> u_model_it;
-
-    vec2 u_t0;
-    vec2 u_t1;
-    vec2 u_t2;
-
     mat<3, 3> ndc_tri;
 
     virtual vec3 vertex(int iface, int nthvert){
@@ -59,7 +75,7 @@ struct BlingPhongShader : public IShader{
         vec3 l, n, r; //light dir, normal, reflected light dir
         vec2 b_uv = v_uv*bar;
 
-        TGAColor c = tex1.get(u_t1.x*(b_uv.x), u_t1.y*(1-b_uv.y));
+        TGAColor c = tex[1].get(tex[1].get_width()*(b_uv.x), tex[1].get_height()*(1-b_uv.y));
         n = vec3((double)c[2]/255*2-1, (double)c[1]/255*2-1, (double)c[0]/255*2-1).normalize();   //according to tinyredner/model.cpp, cant understand it
         {//TBN
             vec3 b_n = (v_nrm*bar).normalize();
@@ -88,10 +104,10 @@ struct BlingPhongShader : public IShader{
         r = (n*(nl*2.0) + l).normalize();
 
         double diff = std::max<double>(nl, 0.0);
-        double spec = 1-pow(1-std::max(r.z, 0.0), (double)tex2.get(u_t2.x*(b_uv.x), u_t2.y*(1-b_uv.y))[0]);
+        double spec = 1-pow(1-std::max(r.z, 0.0), (double)tex[2].get(tex[2].get_width()*(b_uv.x), tex[2].get_height()*(1-b_uv.y))[0]);
         double ambi = 5;
 
-        c = tex0.get(u_t0.x*(b_uv.x), u_t0.y*(1-b_uv.y));
+        c = tex[0].get(tex[0].get_width()*(b_uv.x), tex[0].get_height()*(1-b_uv.y));
         for (int i=0; i<3; i++) color[i] = std::min<double>(ambi + (double)c[i]*(diff + 0.76*spec), 255);
       
         return false;   //discard
@@ -99,12 +115,19 @@ struct BlingPhongShader : public IShader{
 
 };
 
-void load(){
-    tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
-    tex1.read_tga_file("../obj/diablo3_pose/_nm_tangent.tga");
-    tex2.read_tga_file("../obj/diablo3_pose/_spec.tga");
-    model = new Model("../obj/diablo3_pose/object.obj");
-
+void load(uint8_t cnt){
+    for(int i = 0;i < 3;i ++ ){
+        if(texture_path[cnt][i].empty()){
+            std::cout << "texture#" << i << " is empty" << std::endl;
+            continue;
+        }
+        if(!tex[i].read_tga_file(texture_path[cnt][i])) std::cout << "cant read texture#" << i << "in" << texture_path[cnt][i] << std::endl;
+    }
+    model = new Model(model_path[cnt].c_str());
+    // tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
+    // tex1.read_tga_file("../obj/diablo3_pose/_nm_tangent.tga");
+    // tex2.read_tga_file("../obj/diablo3_pose/_spec.tga");
+    // model = new Model("../obj/diablo3_pose/object.obj");
     // tex0.read_tga_file("../obj/african_head/_diffuse.tga");
     // tex1.read_tga_file("../obj/african_head/normal.tga");
     // tex2.read_tga_file("../obj/african_head/_spec.tga");
@@ -123,70 +146,63 @@ int main(const int argc, const char** argv)
 {
     TGAImage image(width, height, TGAImage::RGB);
     my_clear(image, white);
-    load();
-
     double *zbuffer = new double[width*height];
     for(int i = 0;i < width*height;i ++ ) zbuffer[i] = -std::numeric_limits<double>::max();
-
     double  eye_fov = 45, 
             aspect_ratio = width/height,
             zNear = -1,
-            zFar = -500,
+            zFar = -800,
             f1 = (zNear - zFar)/2.0,
             f2 = (zFar + zNear)/2.0;
- 
-    model_trans         = get_model_trans(model_trans);
+    
     view_trans          = get_view(eye_pos, center, up);
     projection_trans    = get_projection(eye_fov, aspect_ratio, zNear, zFar);
-    mvp                 = projection_trans*view_trans*model_trans;
     view_port           = get_viewport(0, 0, width, height, depth);
-
-    /*
-    write model
-    */
-    
-    if(true){
-        BlingPhongShader shader;
-        shader.u_viewport   = view_port;
-        shader.u_model      = model_trans;   //to_center leads to strange diff
-        shader.u_view       = view_trans;
-        shader.u_proj       = projection_trans;
-        shader.u_model_it   = (model_trans).invert_transpose();
-        shader.u_projI      = projection_trans.invert();
-        shader.u_vpI        = view_port.invert();
+    for(uint8_t cnt = 0;cnt < 2;cnt ++ ){
+        std::cout << "process model #" << char(cnt+'0') << std::endl;
+        load(cnt);
+        model_trans         = get_model_trans(model_scale[cnt], model_poi[cnt]);
+        mvp                 = projection_trans*view_trans*model_trans;
         
-        shader.u_t0 = vec2(tex0.get_width(), tex0.get_height());
-        shader.u_t1 = vec2(tex1.get_width(), tex1.get_height());
-        shader.u_t2 = vec2(tex2.get_width(), tex2.get_height());
-
-        for(int i = 0;i <model->nfaces();i ++ ){
-            //for everyface, get vertex and draw lines
-            for(int j = 0;j < 3;j ++ ){
-                shader.vertex(i, j);
+        if(true){
+            BlingPhongShader shader;
+            shader.u_viewport   = view_port;
+            shader.u_model      = model_trans;   //to_center leads to strange diff
+            shader.u_view       = view_trans;
+            shader.u_proj       = projection_trans;
+            shader.u_projI      = projection_trans.invert();
+            shader.u_vpI        = view_port.invert();
+            
+            for(int i = 0;i <model->nfaces();i ++ ){
+                //for everyface, get vertex and draw lines
+                for(int j = 0;j < 3;j ++ ){
+                    shader.vertex(i, j);
+                }
+                triangle(shader.v_tri, shader, zbuffer, image);
             }
-            triangle(shader.v_tri, shader, zbuffer, image);
-        }
-    }else{
-        for(int i = 0;i <model->nfaces();i ++ ){
-            vec3 screen_coords[3];
-            for(int j = 0;j < 3;j ++ ){
-                screen_coords[j] = trans_vec3(view_port*mvp, model->vert(i, j), 1.0);
-                screen_coords[j].x = (int)screen_coords[j].x;
-                screen_coords[j].y = (int)screen_coords[j].y;
-            }
-            for(int i = 0;i < 3;i ++ ){
-                line(screen_coords[i].x, screen_coords[i].y, screen_coords[(i+1)%3].x, screen_coords[(i+1)%3].y, image, black);
+        }else{
+            for(int i = 0;i <model->nfaces();i ++ ){
+                vec3 screen_coords[3];
+                for(int j = 0;j < 3;j ++ ){
+                    screen_coords[j] = trans_vec3(view_port*mvp, model->vert(i, j), 1.0);
+                    screen_coords[j].x = (int)screen_coords[j].x;
+                    screen_coords[j].y = (int)screen_coords[j].y;
+                }
+                for(int i = 0;i < 3;i ++ ){
+                    line(screen_coords[i].x, screen_coords[i].y, screen_coords[(i+1)%3].x, screen_coords[(i+1)%3].y, image, black);
+                }
             }
         }
     }
 
-    vec3 origin = trans_vec3(view_port*mvp, vec3(0, 0, 0), 1.0);
-    vec3 xaxis = trans_vec3(view_port*mvp, vec3(1, 0, 0), 1.0);
-    vec3 yaxis = trans_vec3(view_port*mvp, vec3(0, 1, 0), 1.0);
-    vec3 zaxis = trans_vec3(view_port*mvp, vec3(0, 0, 1), 1.0);
-    line(int(origin.x), int(origin.y), int(xaxis.x), int(xaxis.y), image, red);
-    line(int(origin.x), int(origin.y), int(yaxis.x), int(yaxis.y), image, green);
-    line(int(origin.x), int(origin.y), int(zaxis.x), int(zaxis.y), image, blue);
+    double ratio = 50;
+    vec3 o = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(0, 0, 0), 1.0);
+    vec3 x = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(1, 0, 0), 1.0);
+    vec3 y = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(0, 1, 0), 1.0);
+    vec3 z = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(0, 0, 1), 1.0);
+    line(int(o.x), int(o.y), int(x.x), int(x.y), image, red);
+    line(int(o.x), int(o.y), int(y.x), int(y.y), image, green);
+    line(int(o.x), int(o.y), int(z.x), int(z.y), image, blue);
 
     if(image.write_tga_file(output_dir + "output.tga"))
         std::cout << "file output to " << output_dir + "output.tga" << std::endl;
