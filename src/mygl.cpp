@@ -70,14 +70,6 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color){
     }
 }
 
-double interpolation(vec3 bcoords, double v1, double v2, double v3){
-    // std::cout << bcoords[0]+bcoords[1]+bcoords[2] << std::endl;
-    double ret = bcoords[0]*v1;
-    ret += bcoords[1]*v2;
-    ret += bcoords[2]*v3;
-    return ret;
-}
-
 template<int n> vec<n> interpolation(vec3 bcoords, vec<n> v1, vec<n> v2, vec<n> v3){
     assert(n > 0);
     vec<n> ret = bcoords[0]*v1;
@@ -103,7 +95,12 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
     return vec3(-1, 1, 1);
 }
 
-void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image){
+void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImage &image){
+    vec3 pts[3];
+    for(int i = 0;i < 3;i ++ ){
+        pts[i] = trans_vec3(shader.u_viewport*shader.u_proj, world_coords[i], 1.0);
+    }
+    vec2 wc2d[3] = {vec2(world_coords[0].x, world_coords[0].y),vec2(world_coords[1].x, world_coords[1].y),vec2(world_coords[2].x, world_coords[2].y)};
     vec2 pts2[3] = {vec2(pts[0].x, pts[0].y),vec2(pts[1].x, pts[1].y),vec2(pts[2].x, pts[2].y)};
 
     vec2 bboxmin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
@@ -112,8 +109,8 @@ void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image)
     for(int i = 0;i < 3;i ++ )
         for(int j = 0;j < 2;j ++ )
         {
-            bboxmin[j] = std::min(bboxmin[j] , pts[i][j]);
-            bboxmax[j] = std::max(bboxmax[j], pts[i][j]);
+            bboxmin[j] = std::min(bboxmin[j] , pts2[i][j]);
+            bboxmax[j] = std::max(bboxmax[j], pts2[i][j]);
         }
     for(int i = 0;i < 2;i ++ ) {
         bboxmin[i] = std::max(0., bboxmin[i]);
@@ -125,15 +122,16 @@ void triangle(const vec3 pts[3],IShader &shader, double *zbuff, TGAImage &image)
         for(int y = (int)bboxmin.y;y < (int)bboxmax.y+1;y ++ )
         {
             vec3 bc_screen= barycentric(pts2, vec2(x, y));
-            if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
-            double z = interpolation(bc_screen, pts[0].z, pts[1].z, pts[2].z);
-            if(z > zbuff[(int)(x + y*image.get_width())]){
-                TGAColor color;
-                bool discard = shader.fragment(bc_screen, color);
-                if(discard) continue;
-                image.set(x, y, color);
-                zbuff[(int)(x + y*image.get_width())] = z;
-            } 
+            double z = vec3(pts[0][2], pts[1][2], pts[2][2])*bc_screen;
+            vec3 v = trans_vec3(shader.u_projI*shader.u_vpI, vec3(x, y, z), 1.0);
+            vec3 bc_world = barycentric(wc2d, vec2(v.x, v.y));
+
+            if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0 || z < zbuff[(int)(x + y*image.get_width())]) continue;
+            TGAColor color;
+            bool discard = shader.fragment(bc_world, color);
+            if(discard) continue;
+            image.set(x, y, color);
+            zbuff[(int)(x + y*image.get_width())] = z;
         }
 }
 
