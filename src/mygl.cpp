@@ -22,7 +22,7 @@ void my_clear(TGAImage& image, const TGAColor color){
 //     return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
 // }
 
-vec3 trans_vec3(mat<4, 4> trans, vec3 coord, double fill){
+vec3 trans_vec3(const mat<4, 4> trans, const vec3 coord, double fill){
     vec4 v4 = trans*embed<4>(coord, fill);
     if(fill > std::numeric_limits<double>::epsilon()){
         double w = 1/v4[3];
@@ -125,13 +125,13 @@ void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImag
             double z = vec3(screen_coords[0][2], screen_coords[1][2], screen_coords[2][2])*bc_screen;
             vec3 v = trans_vec3(shader.u_projI*shader.u_vpI, vec3(x, y, z), 1.0);
             vec3 bc_world = barycentric(wc2d, vec2(v.x, v.y));
-
-            if(z < zbuff[(int)(x + y*image.get_width())] || bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
+            
+            if(z < zbuff[x + y*image.get_width()] || bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
             TGAColor color;
             bool discard = shader.fragment(bc_world, color);
             if(discard) continue;
             image.set(x, y, color);
-            zbuff[(int)(x + y*image.get_width())] = z;
+            zbuff[x + y*image.get_width()] = z;
         }
 }
 

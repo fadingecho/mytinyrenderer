@@ -13,12 +13,12 @@ const TGAColor green = TGAColor(0, 255, 0, 255);
 const TGAColor black = TGAColor(0, 0, 0, 255);
 
 struct IShader {
-    mat<4, 4> u_viewport;
+    mat<4, 4> u_viewport;   
     mat<4, 4> u_model;
     mat<4, 4> u_view;
     mat<4, 4> u_proj;
-    mat<4, 4> u_vpI;
-    mat<4, 4> u_projI;
+    mat<4, 4> u_vpI;    //viewport_invert
+    mat<4, 4> u_projI;  //projection_invert
     virtual vec3 vertex(int iface, int nthvert) = 0;
     virtual bool fragment(vec3 bar, TGAColor &color) = 0;
 };

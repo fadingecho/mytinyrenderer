@@ -50,12 +50,31 @@ const std::string output_dir = "../output/";
 TGAImage tex[3];
 
 TGAColor show_nv3(vec3 v3){
-    return TGAColor(v3.x*255, v3.y*255, v3.z*255);
+    double s = v3.x + v3.y + v3.z;
+    return TGAColor(v3.x*255/s, v3.y*255/s, v3.z*255/s);
 }
+
+struct DepthShader : public IShader{
+    public:
+    mat<3, 3> v_tri;
+    
+    virtual vec3 vertex(int iface, int nthvert){
+        vec3 gl_vertex = trans_vec3(u_view*u_model, model->vert(iface, nthvert), 1.0);
+        v_tri.set_col(nthvert, trans_vec3(u_viewport*u_proj, gl_vertex, 1.0));
+        return gl_vertex;
+    }
+
+    virtual bool fragment(vec3 bar, TGAColor &color){
+        double ratio = (v_tri*bar).z;
+        // std::cout << ratio << std::endl;
+        color = TGAColor(255*ratio, 255*ratio, 255*ratio, 255);
+        return false;   //discard
+    } 
+};
 
 struct BlingPhongShader : public IShader{
     public:
-    vec3 v_tri[3];
+    mat<3, 3> v_tri;
     mat<2, 3> v_uv;//written by vertex shader, read by fragment shader
     mat<3, 3> v_nrm;//fs will interpolate normal
     mat<3, 3> ndc_tri;
@@ -67,7 +86,7 @@ struct BlingPhongShader : public IShader{
         v_nrm.set_col(nthvert, proj<3>((u_view*u_model).invert_transpose()*embed<4>(model->normal(iface, nthvert), 0.0)));
         ndc_tri.set_col(nthvert, gl_vertex);
 
-        v_tri[nthvert] = gl_vertex;
+        v_tri.set_col(nthvert, gl_vertex);
         return gl_vertex;
     }
 
@@ -112,7 +131,6 @@ struct BlingPhongShader : public IShader{
       
         return false;   //discard
     }
-
 };
 
 void load(uint8_t cnt){
@@ -124,28 +142,12 @@ void load(uint8_t cnt){
         if(!tex[i].read_tga_file(texture_path[cnt][i])) std::cout << "cant read texture#" << i << "in" << texture_path[cnt][i] << std::endl;
     }
     model = new Model(model_path[cnt].c_str());
-    // tex0.read_tga_file("../obj/diablo3_pose/_diffuse.tga");
-    // tex1.read_tga_file("../obj/diablo3_pose/_nm_tangent.tga");
-    // tex2.read_tga_file("../obj/diablo3_pose/_spec.tga");
-    // model = new Model("../obj/diablo3_pose/object.obj");
-    // tex0.read_tga_file("../obj/african_head/_diffuse.tga");
-    // tex1.read_tga_file("../obj/african_head/normal.tga");
-    // tex2.read_tga_file("../obj/african_head/_spec.tga");
-    // model = new Model("../obj/african_head/object.obj");
-    // tex1.read_tga_file("../obj/grid.tga");
-    // tex0.read_tga_file("../obj/african_head/_diffuse.tga");
-    // tex1.read_tga_file("../obj/african_head/normal.tga");
-    // tex2.read_tga_file("../obj/african_head/_spec.tga");
-    // model = new Model("../obj/african_head/object.obj");
-    // tex0.read_tga_file("../obj/floor_diffuse.tga");
-    // tex1.read_tga_file("../obj/floor_nm_tangent.tga");
-    // model = new Model("../obj/floor.obj");
 }
 
 int main(const int argc, const char** argv)
 {
     TGAImage image(width, height, TGAImage::RGB);
-    my_clear(image, white);
+    my_clear(image, black);
     double *zbuffer = new double[width*height];
     for(int i = 0;i < width*height;i ++ ) zbuffer[i] = -std::numeric_limits<double>::max();
     double  eye_fov = 45, 
@@ -165,7 +167,7 @@ int main(const int argc, const char** argv)
         mvp                 = projection_trans*view_trans*model_trans;
         
         if(true){
-            BlingPhongShader shader;
+            DepthShader shader;
             shader.u_viewport   = view_port;
             shader.u_model      = model_trans;   //to_center leads to strange diff
             shader.u_view       = view_trans;
@@ -175,10 +177,11 @@ int main(const int argc, const char** argv)
             
             for(int i = 0;i <model->nfaces();i ++ ){
                 //for everyface, get vertex and draw lines
+                vec3 screen_coords[3];
                 for(int j = 0;j < 3;j ++ ){
-                    shader.vertex(i, j);
+                    screen_coords[j] = shader.vertex(i, j);
                 }
-                triangle(shader.v_tri, shader, zbuffer, image);
+                triangle(screen_coords, shader, zbuffer, image);
             }
         }else{
             for(int i = 0;i <model->nfaces();i ++ ){
@@ -193,6 +196,7 @@ int main(const int argc, const char** argv)
                 }
             }
         }
+        std::cout << std::endl;
     }
 
     double ratio = 50;
