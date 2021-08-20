@@ -95,10 +95,10 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
     return vec3(-1, 1, 1);
 }
 
-void triangle(const vec3 world_coords[3],IShader &shader, double *zbuff, TGAImage &image){
-    vec3 screen_coords[3];// world coords in the paras are coords after camera trans, actually
+void triangle(const vec3 screen_coords[3],IShader &shader, double *zbuff, TGAImage &image){
+    vec3 world_coords[3];// world coords in the paras are coords after camera trans, actually
     for(int i = 0;i < 3;i ++ ){
-        screen_coords[i] = trans_vec3(shader.u_viewport*shader.u_proj, world_coords[i], 1.0);
+        world_coords[i] = trans_vec3(shader.u_projI*shader.u_vpI, screen_coords[i], 1.0);
     }
     vec2 wc2d[3] = {vec2(world_coords[0].x, world_coords[0].y),vec2(world_coords[1].x, world_coords[1].y),vec2(world_coords[2].x, world_coords[2].y)};
     vec2 sc2d[3] = {vec2(screen_coords[0].x, screen_coords[0].y),vec2(screen_coords[1].x, screen_coords[1].y),vec2(screen_coords[2].x, screen_coords[2].y)};
@@ -160,8 +160,6 @@ mat<4, 4> get_translation(const vec3 world_coords){
 }
 
 mat<4, 4> get_model_trans(const double ratio, const vec3 world_coords){
-    mat<4, 4> m = mat<4, 4>::identity();
-
     double angle = 0;
     angle = angle * MY_PI / 180.f;
     mat<4, 4> rot = mat<4, 4>::identity();
@@ -169,7 +167,7 @@ mat<4, 4> get_model_trans(const double ratio, const vec3 world_coords){
     rot[0][2] = sin(angle);
     rot[2][0] = -sin(angle);
     rot[2][2] = cos(angle);
-    return rot*get_translation(world_coords)*get_scale(ratio)*m;
+    return get_translation(world_coords)*get_scale(ratio);
 }
 
 mat<4, 4> get_view(const vec3 eye_pos, const vec3 center, const vec3 up){
