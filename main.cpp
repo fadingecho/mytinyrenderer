@@ -92,7 +92,9 @@ public:
         vec3 b_wc = v_wc*bar;
         vec3 b_sc = trans_vec3(u_model.invert()*u_view.invert(), b_wc, 1.0);
         vec3 b_shadow = trans_vec3(u_shadow, b_sc, 1.0);
-        double shadow = 0.3 + 0.7*(shadow_buffer[int(b_shadow.x + b_shadow.y*width)] < b_shadow.z);
+        double shadow = 1.0;
+        // double shadow = 0.3 + 0.7*(shadow_buffer[int(b_shadow.x + b_shadow.y*width)] + 0.005 < b_shadow.z);
+        if(shadow_buffer[int(b_shadow.x + b_shadow.y*width)] + 0.005 > b_shadow.z){color = black;return false;}
 
         vec3 l, n, r; //light dir, normal, reflected light dir
         vec2 b_uv = v_uv * bar;
@@ -131,8 +133,8 @@ public:
 
         // c = tex[0].get(tex[0].get_width() * (b_uv.x), tex[0].get_height() * (1 - b_uv.y));
         for (int i = 0; i < 3; i++)
-            color[i] = std::min<double>(ambi + (double)c[i] * (diff + 0.76 * spec) * shadow, 255);
-        // color = white * shadow;
+            // color[i] = std::min<double>(ambi + (double)c[i] * (diff + 0.76 * spec) * shadow, 255);
+        color = white * shadow;
 
         return false; //discard
     }
@@ -238,7 +240,7 @@ int main(const int argc, const char **argv)
             shader.u_proj = projection_trans;
             shader.u_projI = projection_trans.invert();
             shader.u_vpI = view_port.invert();
-            shader.u_shadow = view_port * projection_trans * get_view(eye_pos, light_pos, up) * model_trans;
+            shader.u_shadow = view_port * get_projection(90, aspect_ratio, zNear, zFar) * get_view(eye_pos, light_pos, up) * model_trans;
             for (int i = 0; i < model->nfaces(); i++)
             {
                 //for everyface, get vertex and draw lines
