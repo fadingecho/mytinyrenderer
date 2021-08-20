@@ -9,18 +9,17 @@ const int height = 800;
 const int width = 800;
 const int depth = 255;
 
-vec3 light_dir(-1, 0, 0);
-vec3 light_pos(300, 300, 0);
+vec3 light_pos(200, 350, 300);    //bug : try 0, 200, 0
 vec3 eye_pos(0, 0, 0);
 vec3 center(180, 150, 300);
 vec3 up(0, 1, 0);
-
-double* shadow_buffer;
+double *shadow_buffer;
+TGAImage shadow_map;
 
 double model_scale[2] = {100, 200};
 vec3 model_poi[2] = {
     vec3(0, 0, 0),
-    vec3(-100, 0, -200)};
+    vec3(-100, 50, -200)};
 
 std::string texture_path[2][3] = {
     // {"../obj/african_head/_diffuse.tga",
@@ -52,6 +51,13 @@ TGAColor show_nv3(vec3 v3)
 {
     double s = v3.norm();
     return TGAColor(v3.x * 255 / s, v3.y * 255 / s, v3.z * 255 / s);
+}
+
+void init_buffer(double *buffer, const int w, const int h){
+    for (int i = 0; i < w*h; i++)
+    {
+        buffer[i] = -std::numeric_limits<double>::max();
+    }
 }
 
 struct DepthShader : public IShader
@@ -96,11 +102,14 @@ public:
         vec3 bc_wpt = v_tri*bar;
         vec3 bc_spt = trans_vec3(u_model.invert()*u_view.invert(), bc_wpt, 1.0);
         vec3 b_shadow = trans_vec3(u_shadow, bc_spt, 1.0);
-        // double shadow = 1.0;
-        // double shadow = 0.3 + 0.7*(shadow_buffer[int(b_shadow.x + b_shadow.y*width)] + 0.005 < b_shadow.z);
-        if(shadow_buffer[int(b_shadow.x + b_shadow.y*width)] + 0.01 < b_shadow.z){color = black;return false;}
-        color = white;
-        return false;
+        
+        // if(shadow_buffer[int(b_shadow.x + b_shadow.y*width*2)] + 0.01 < b_shadow.z){color = black;return false;}
+        // color = white;
+        // return false;
+        double shadow_z = (double)shadow_map.get(b_shadow.x, b_shadow.y)[0] / 255;
+        // color = white*b_shadow.z;
+        // return false;
+        double shadow = 0.3 + 0.7*(shadow_z < b_shadow.z + 0.01);
 
         vec3 l, n, r; //light dir, normal, reflected light dir
         vec2 b_uv = v_uv * bar;
@@ -134,13 +143,13 @@ public:
 
         r = (n * (nl * 2.0) + l).normalize();
 
+        double ambi = 5;
         double diff = std::max<double>(nl, 0.0);
         double spec = 1 - pow(1 - std::max(r.z, 0.0), (double)tex[2].get(tex[2].get_width() * (b_uv.x), tex[2].get_height() * (1 - b_uv.y))[0]);
-        double ambi = 5;
 
         c = tex[0].get(tex[0].get_width() * (b_uv.x), tex[0].get_height() * (1 - b_uv.y));
         for (int i = 0; i < 3; i++)
-            color[i] = std::min<double>(ambi + (double)c[i] * (diff + 0.76 * spec), 255);
+            color[i] = std::min<double>(ambi + (double)c[i] * (diff + 0.76 * spec) * shadow, 255);
         // color = white*diff;
     
         return false; //discard
@@ -166,15 +175,14 @@ void load(uint8_t cnt)
 
 int main(const int argc, const char **argv)
 {
-    TGAImage image(width, height, TGAImage::RGB);
-    my_clear(image, black);
-    double *zbuffer = new double[width * height];
-    shadow_buffer = new double[width * height];
-    for (int i = 0; i < width * height; i++)
-    {
-        zbuffer[i] = -std::numeric_limits<double>::max();
-        shadow_buffer[i] = -std::numeric_limits<double>::max();
-    }
+    TGAImage frame(width, height, TGAImage::RGB);
+    shadow_map = TGAImage(width*2, height*2, TGAImage::RGB);
+    my_clear(frame, black);
+    my_clear(shadow_map, black);
+    double *zbuffer = new double[frame.get_width()*frame.get_height()];
+    shadow_buffer = new double[shadow_map.get_width()*shadow_map.get_height()];
+    init_buffer(zbuffer, frame.get_width(), frame.get_height());
+    init_buffer(shadow_buffer, shadow_map.get_width(), shadow_map.get_height());
 
     double eye_fov = 45,
            aspect_ratio = width / height,
@@ -186,7 +194,7 @@ int main(const int argc, const char **argv)
     { //shadow mapping
         view_trans = get_view(eye_pos, light_pos, up);
         projection_trans = get_projection(eye_fov, aspect_ratio, zNear, zFar);
-        view_port = get_viewport(0, 0, width, height, depth);
+        view_port = get_viewport(0, 0, shadow_map.get_width(), shadow_map.get_height(), depth);
 
         for (uint8_t cnt = 0; cnt < 2; cnt++)
         {
@@ -210,30 +218,31 @@ int main(const int argc, const char **argv)
                 {
                     screen_coords[j] = shader.vertex(i, j);
                 }
-                triangle(screen_coords, shader, shadow_buffer, image);
+                triangle(screen_coords, shader, shadow_buffer, shadow_map);
             }
             std::cout << std::endl;
         }
         /*
         write zbuffer
         */
-        for (int i = 0; i < width; i++)
-            for (int j = 0; j < height; j++)
+       int w = shadow_map.get_width(), h = shadow_map.get_height();
+        for (int i = 0; i < w; i++)
+            for (int j = 0; j < h; j++)
             {
-                double ratio = shadow_buffer[i + j * width];
-                image.set(i, j, TGAColor(255 * ratio, 255 * ratio, 255 * ratio, 255));
+                double ratio = shadow_buffer[i + j * w];
+                shadow_map.set(i, j, TGAColor(255 * ratio, 255 * ratio, 255 * ratio, 255));
             }
-        if (image.write_tga_file(output_dir + "sbuffer.tga"))
+        if (shadow_map.write_tga_file(output_dir + "sbuffer.tga"))
             std::cout << "sbuffer output to " << output_dir + "sbuffer.tga" << std::endl << std::endl;
         else
             std::cout << "can not output sbuffer" << std::endl;
     }
 
-    image.clear();
+    frame.clear();
     { //rendering frame
         view_trans = get_view(eye_pos, center, up);
         projection_trans = get_projection(eye_fov, aspect_ratio, zNear, zFar);
-        view_port = get_viewport(0, 0, width, height, depth);
+        view_port = get_viewport(0, 0, frame.get_width(), frame.get_height(), depth);
 
         for (uint8_t cnt = 0; cnt < 2; cnt++)
         {
@@ -249,7 +258,7 @@ int main(const int argc, const char **argv)
             shader.u_proj = projection_trans;
             shader.u_projI = projection_trans.invert();
             shader.u_vpI = view_port.invert();
-            shader.u_shadow = view_port * projection_trans * view_trans * model_trans;
+            shader.u_shadow = shadow_m * model_trans;
             for (int i = 0; i < model->nfaces(); i++)
             {
                 //for everyface, get vertex and draw lines
@@ -258,11 +267,11 @@ int main(const int argc, const char **argv)
                 {
                     screen_coords[j] = shader.vertex(i, j);
                 }
-                triangle(screen_coords, shader, zbuffer, image);
+                triangle(screen_coords, shader, zbuffer, frame);
             }
             std::cout << std::endl;
         }
-        if (image.write_tga_file(output_dir + "output.tga"))
+        if (frame.write_tga_file(output_dir + "output.tga"))
             std::cout << "file output to " << output_dir + "output.tga" << std::endl;
         else
             std::cout << "can not output file" << std::endl;
@@ -270,11 +279,12 @@ int main(const int argc, const char **argv)
         /*
         write zbuffer
         */
-        TGAImage buffer(width, height, TGAImage::RGBA);
-        for (int i = 0; i < width; i++)
-            for (int j = 0; j < height; j++)
+       int w = frame.get_width(), h = frame.get_height();
+        TGAImage buffer(w, h, TGAImage::RGBA);
+        for (int i = 0; i < w; i++)
+            for (int j = 0; j < h; j++)
             {
-                double ratio = zbuffer[i + j * width];
+                double ratio = zbuffer[i + j * w];
                 buffer.set(i, j, TGAColor(255 * ratio, 255 * ratio, 255 * ratio, 255));
             }
         if (buffer.write_tga_file(output_dir + "zbuffer.tga"))
@@ -292,6 +302,6 @@ int main(const int argc, const char **argv)
 //     vec3 x = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(1, 0, 0), 1.0);
 //     vec3 y = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(0, 1, 0), 1.0);
 //     vec3 z = trans_vec3(view_port*projection_trans*view_trans*get_model_trans(ratio, vec3(0, 0, 0)), vec3(0, 0, 1), 1.0);
-//     line(int(o.x), int(o.y), int(x.x), int(x.y), image, red);
-//     line(int(o.x), int(o.y), int(y.x), int(y.y), image, green);
-//     line(int(o.x), int(o.y), int(z.x), int(z.y), image, blue);
+//     line(int(o.x), int(o.y), int(x.x), int(x.y), frame, red);
+//     line(int(o.x), int(o.y), int(y.x), int(y.y), frame, green);
+//     line(int(o.x), int(o.y), int(z.x), int(z.y), frame, blue);
