@@ -191,7 +191,6 @@ int main(const int argc, const char **argv)
     load();
 
     { //shadow mapping
-        timer.start();
         view_trans = get_view(eye_pos, light_pos, up);
         projection_trans = get_projection(eye_fov, aspect_ratio, zNear, zFar);
         view_port = get_viewport(0, 0, shadow_map.get_width(), shadow_map.get_height(), depth);
@@ -200,7 +199,6 @@ int main(const int argc, const char **argv)
         {
             model = models[cnt];
             tex = textures[cnt];
-            std::cout << "process model #" << char(cnt + '0') << std::endl;
             
             model_trans = get_model_trans(model_scale[cnt], model_poi[cnt]);
             shadow_trans = view_port * projection_trans * view_trans;
@@ -223,7 +221,6 @@ int main(const int argc, const char **argv)
                 }
                 triangle(screen_coords, shader, shadow_buffer, shadow_map);
             }
-            std::cout << std::endl;
         }
 
         int w = shadow_map.get_width(), h = shadow_map.get_height();
@@ -235,6 +232,7 @@ int main(const int argc, const char **argv)
             }
     }
 
+    timer.start();
     { //rendering frame
         view_trans = get_view(eye_pos, center, up);
         projection_trans = get_projection(eye_fov, aspect_ratio, zNear, zFar);
@@ -244,7 +242,6 @@ int main(const int argc, const char **argv)
         {
             model = models[cnt];
             tex = textures[cnt];
-            std::cout << "process model #" << char(cnt + '0') << std::endl;
             
             model_trans = get_model_trans(model_scale[cnt], model_poi[cnt]);
             mvp = projection_trans * view_trans * model_trans;
@@ -269,7 +266,6 @@ int main(const int argc, const char **argv)
                 }
                 triangle(screen_coords, shader, zbuffer, frame);
             }
-            std::cout << std::endl;
         }
         timer.end();
         if (frame.write_tga_file(output_dir + "output.tga"))

@@ -27,6 +27,6 @@ public:
     }
     void end()
     {
-        printf("%fms\n\n", (double)(clock() - tick) / CLOCKS_PER_SEC);
+        printf("%fs\n\n", (double)(clock() - tick) / CLOCKS_PER_SEC);
     }
 };
