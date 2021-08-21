@@ -9,7 +9,8 @@ const int height = 800;
 const int width = 800;
 const int depth = 255;
 
-vec3 light_pos(200, 350, 300);    //bug : try 0, 200, 0
+// vec3 light_pos(200, 350, 300);    //bug : try 0, 200, 0
+vec3 light_pos(0, 500, 300);
 vec3 eye_pos(0, 0, 0);
 vec3 center(180, 150, 300);
 vec3 up(0, 1, 0);

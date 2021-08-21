@@ -103,19 +103,16 @@ void triangle(const vec3 screen_coords[3],IShader &shader, double *zbuff, TGAIma
     vec2 wc2d[3] = {vec2(world_coords[0].x, world_coords[0].y),vec2(world_coords[1].x, world_coords[1].y),vec2(world_coords[2].x, world_coords[2].y)};
     vec2 sc2d[3] = {vec2(screen_coords[0].x, screen_coords[0].y),vec2(screen_coords[1].x, screen_coords[1].y),vec2(screen_coords[2].x, screen_coords[2].y)};
 
-    vec2 bboxmin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
-    vec2 bboxmax(-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max());
     vec2 clamp(image.get_width() - 1, image.get_height() - 1);
+    vec2 bboxmin(clamp);
+    vec2 bboxmax(std::numeric_limits<double>::epsilon(), std::numeric_limits<double>::epsilon());//initting it by 0 causes unknow error when light pos is (0, y, 0) etc.
+    
     for(int i = 0;i < 3;i ++ )
         for(int j = 0;j < 2;j ++ )
         {
             bboxmin[j] = std::min(bboxmin[j] , sc2d[i][j]);
             bboxmax[j] = std::max(bboxmax[j], sc2d[i][j]);
         }
-    for(int i = 0;i < 2;i ++ ) {
-        bboxmin[i] = std::max(0., bboxmin[i]);
-        bboxmax[i] = std::min(clamp[i], bboxmax[i]);
-    }
     
     vec2 uv;
     for(int x =(int)bboxmin.x;x < (int)bboxmax.x+1;x ++ )
