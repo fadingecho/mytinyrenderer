@@ -1,8 +1,9 @@
-#include "../include/tgaimage.h"
+#include "tgaimage.h"
 #include <vector>
 #include <cmath>
-#include "../include/geometry.h"
-#include "../include/model.h"
+#include "geometry.h"
+#include "model.h"
+#include "global.h"
 #include <string>
 #include <limits>
 
@@ -17,8 +18,10 @@ struct IShader {
     mat<4, 4> u_model;
     mat<4, 4> u_view;
     mat<4, 4> u_proj;
-    mat<4, 4> u_vpI;    //viewport_invert
-    mat<4, 4> u_projI;  //projection_invert
+    mat<4, 4> u_to_camera;              //coord after camera trans
+    mat<4, 4> u_to_model;               //coord after model trans
+    mat<4, 4> u_camera_normal_trans;    //normal after camera trans
+    mat<4, 4> u_mvp;
     virtual vec3 vertex(int iface, int nthvert) = 0;
     virtual bool fragment(vec3 bar, TGAColor &color) = 0;
 };

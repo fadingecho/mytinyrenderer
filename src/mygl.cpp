@@ -8,23 +8,9 @@ void my_clear(TGAImage& image, const TGAColor color){
         }
 }
 
-// vec<4> to_vec4(const vec<3> v3){
-//     vec4 v4;
-//     v4[0] = v3[0];
-//     v4[1] = v3[1];
-//     v4[2] = v3[2];
-//     v4[3] = 1;
-//     return v4;
-// }
-
-// vec3 to_vec3(const vec4 v4){
-//     double w = 1/v4[3];
-//     return vec3(v4[0]*w, v4[1]*w, v4[2]*w);
-// }
-
 vec3 trans_vec3(const mat<4, 4> trans, const vec3 coord, double fill){
     vec4 v4 = trans*embed<4>(coord, fill);
-    if(fill > std::numeric_limits<double>::epsilon()){
+    if(fill > epsilon){
         double w = 1/v4[3];
         return proj<3>(v4)*w;
     }
@@ -82,30 +68,24 @@ vec3 barycentric(const vec2 pts[3], const vec2 P){
     vec2 A = pts[0], B = pts[1], C = pts[2];
     vec3 x(C[0] - A[0], B[0] - A[0], A[0] - P[0]);
     vec3 y(C[1] - A[1], B[1] - A[1], A[1] - P[1]);
-
-    vec3 u = cross(x, y); // u 向量和 x y 向量的点积为 0，所以 x y 向量叉乘可以得到 u 向量
-
-    // 由于 A, B, C, P 的坐标都是 int 类型，所以 u[2] 必定是 int 类型
-    // 如果 u[2] 为 0，则表示三角形 ABC 退化了（退还为直线 or 一个点），需要对其舍弃
-    if (std::abs(u[2]) > 1e-2) {
-        return vec3(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+    vec3 u = cross(x, y); 
+    if (std::abs(u[2]) > epsilon) {
+        double iz = 1.0 / u.z;
+        return vec3(1.0 - (u.x + u.y)*iz, u.y*iz, u.x*iz);
     }
-
-    // in this case generate negative coordinates, it will be thrown away by the rasterizator
     return vec3(-1, 1, 1);
 }
 
 void triangle(const vec3 screen_coords[3],IShader &shader, double *zbuff, TGAImage &image){
     vec3 world_coords[3];// world coords in the paras are coords after camera trans, actually
     for(int i = 0;i < 3;i ++ ){
-        world_coords[i] = trans_vec3(shader.u_projI*shader.u_vpI, screen_coords[i], 1.0);
+        world_coords[i] = trans_vec3(shader.u_to_camera, screen_coords[i], 1.0);
     }
     vec2 wc2d[3] = {vec2(world_coords[0].x, world_coords[0].y),vec2(world_coords[1].x, world_coords[1].y),vec2(world_coords[2].x, world_coords[2].y)};
     vec2 sc2d[3] = {vec2(screen_coords[0].x, screen_coords[0].y),vec2(screen_coords[1].x, screen_coords[1].y),vec2(screen_coords[2].x, screen_coords[2].y)};
 
-    vec2 clamp(image.get_width() - 1, image.get_height() - 1);
-    vec2 bboxmin(clamp);
-    vec2 bboxmax(std::numeric_limits<double>::epsilon(), std::numeric_limits<double>::epsilon());//initting it by 0 causes unknow error when light pos is (0, y, 0) etc.
+    vec2 bboxmin(image.get_width() - 1, image.get_height() - 1);
+    vec2 bboxmax(epsilon, epsilon);//initting it by 0 causes unknow error when light pos is (0, y, 0) etc.
     
     for(int i = 0;i < 3;i ++ )
         for(int j = 0;j < 2;j ++ )
@@ -120,10 +100,10 @@ void triangle(const vec3 screen_coords[3],IShader &shader, double *zbuff, TGAIma
         {
             vec3 bc_screen= barycentric(sc2d, vec2(x, y));
             double z = vec3(screen_coords[0][2], screen_coords[1][2], screen_coords[2][2])*bc_screen;
-            vec3 v = trans_vec3(shader.u_projI*shader.u_vpI, vec3(x, y, z), 1.0);
+            vec3 v = trans_vec3(shader.u_to_camera, vec3(x, y, z), 1.0);
             vec3 bc_world = barycentric(wc2d, vec2(v.x, v.y));
             
-            if(z < zbuff[x + y*image.get_width()] || bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
+            if(bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0 || z < zbuff[x + y*image.get_width()]) continue;
             TGAColor color;
             bool discard = shader.fragment(bc_world, color);
             if(discard) continue;
